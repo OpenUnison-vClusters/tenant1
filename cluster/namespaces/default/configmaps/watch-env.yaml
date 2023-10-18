@@ -1,0 +1,53 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: watch-env
+  namespace: default
+  labels:
+    app: watch-env
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: watch-env
+  template:
+    metadata:
+      labels:
+        app: watch-env
+      annotations:
+        vault.hashicorp.com/service: "https://vault.vcluster.tremolo.dev"
+        vault.hashicorp.com/auth-path: "auth/vcluster-tenant1"
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/log-level: trace
+        vault.hashicorp.com/role: cluster-read
+        vault.hashicorp.com/tls-skip-verify: "true"
+        vault.hashicorp.com/agent-inject-secret-myenv: 'secret/data/vclusters/tenant1/ns/default/config'
+        vault.hashicorp.com/secret-volume-path-myenv: '/etc/secrets'
+        vault.hashicorp.com/agent-inject-template-myenv: |
+              {{- with secret "secret/data/vclusters/tenant1/ns/default/config" -}}
+              MY_SECRET_PASSWORD="{{ index .Data "some-password" }}"
+              {{- end }}
+    spec:
+      containers:
+        - name: ubuntu
+          image: ubuntu:22.04
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          imagePullPolicy: IfNotPresent
+          command:
+          - bash
+          - -c
+          - 'while [[ 1 == 1 ]]; do date && cat /etc/secrets/myenv && echo "" && echo "----------" && sleep 1; done'
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      dnsPolicy: ClusterFirst
+      securityContext: {}
+      schedulerName: default-scheduler
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 25%
+      maxSurge: 25%
+  revisionHistoryLimit: 10
+  progressDeadlineSeconds: 600
